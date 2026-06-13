@@ -21,12 +21,16 @@ def _build_macros(data: AuditInput, result: AuditResult) -> list[dict]:
     rp = result.report
 
     return [
-        {"key": "nom_entreprise",    "value": data.nom_entreprise},
-        {"key": "nom_dirigeant",     "value": data.nom_dirigeant},
-        {"key": "date_audit",        "value": result.date_audit},
-        {"key": "secteur",           "value": data.secteur},
-        {"key": "score_global",      "value": str(s.score_global)},
-        {"key": "niveau_conformite", "value": s.niveau_conformite},
+        {"key": "nom_entreprise",           "value": data.nom_entreprise},
+        {"key": "nom_dirigeant",            "value": data.nom_dirigeant},
+        {"key": "date_audit",               "value": result.date_audit},
+        {"key": "secteur",                  "value": data.secteur},
+        {"key": "nb_salaries",              "value": str(data.nb_salaries)},
+        {"key": "ville",                    "value": ""},
+        {"key": "score_global",             "value": str(s.score_global)},
+        {"key": "niveau_conformite",        "value": s.niveau_conformite},
+        {"key": "introduction_personnalisee", "value": rp.resume_executif},
+        {"key": "resume_executif",            "value": rp.resume_executif},
         # Scores par bloc
         {"key": "score_A",  "value": str(s.score_A)},
         {"key": "score_B",  "value": str(s.score_B)},
