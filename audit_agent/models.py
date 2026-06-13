@@ -6,7 +6,6 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Literal, Optional
 from enum import Enum
 
-
 # ─────────────────────────────────────────────────────────
 # TYPES DE BASE
 # ─────────────────────────────────────────────────────────
