@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Literal, Optional
 from enum import Enum
 
+
 # ─────────────────────────────────────────────────────────
 # TYPES DE BASE
 # ─────────────────────────────────────────────────────────
@@ -23,50 +24,50 @@ class AuditInput(BaseModel):
     """Données brutes reçues depuis le webhook Tally."""
 
     # Informations client
-    nom_entreprise:  str = Field(..., description="Nom de l'entreprise auditée")
-    secteur:         str = Field(..., description="Secteur d'activité")
-    nb_salaries:     str = Field(..., description="Nombre de salariés (string pour flexibilité)")
-    nom_dirigeant:   str = Field(..., description="Nom et prénom du dirigeant")
-    email_client:    str = Field(..., description="Email de livraison du rapport")
+    nom_entreprise:  str = Field(default="", description="Nom de l'entreprise auditée")
+    secteur:         str = Field(default="", description="Secteur d'activité")
+    nb_salaries:     str = Field(default="1", description="Nombre de salariés")
+    nom_dirigeant:   str = Field(default="", description="Nom et prénom du dirigeant")
+    email_client:    str = Field(default="", description="Email de livraison du rapport")
 
     # Bloc A — Registre des traitements (4 questions, max 15 pts)
-    rep_A1: ReponseType = Field(..., description="Registre des traitements existe")
-    rep_A2: ReponseType = Field(..., description="Registre liste finalité/base légale/durée")
-    rep_A3: ReponseType = Field(..., description="Registre mis à jour dans les 12 mois")
-    rep_A4: ReponseType = Field(..., description="Données sensibles identifiées")
+    rep_A1: ReponseType = Field(default="NON", description="Registre des traitements existe")
+    rep_A2: ReponseType = Field(default="NON", description="Registre liste finalité/base légale/durée")
+    rep_A3: ReponseType = Field(default="NON", description="Registre mis à jour dans les 12 mois")
+    rep_A4: ReponseType = Field(default="NON", description="Données sensibles identifiées")
 
     # Bloc B — Site web & Cookies (5 questions, max 20 pts)
-    rep_B1: ReponseType = Field(..., description="Politique de confidentialité présente")
-    rep_B2: ReponseType = Field(..., description="Mentions complètes dans la politique")
-    rep_B3: ReponseType = Field(..., description="Bandeau cookies présent")
-    rep_B4: ReponseType = Field(..., description="Refus cookies aussi simple qu'acceptation")
-    rep_B5: ReponseType = Field(..., description="Cookies analytiques désactivés par défaut")
+    rep_B1: ReponseType = Field(default="NON", description="Politique de confidentialité présente")
+    rep_B2: ReponseType = Field(default="NON", description="Mentions complètes dans la politique")
+    rep_B3: ReponseType = Field(default="NON", description="Bandeau cookies présent")
+    rep_B4: ReponseType = Field(default="NON", description="Refus cookies aussi simple qu'acceptation")
+    rep_B5: ReponseType = Field(default="NON", description="Cookies analytiques désactivés par défaut")
 
     # Bloc C — Sécurité des données (4 questions, max 20 pts)
-    rep_C1: ReponseType = Field(..., description="Mots de passe forts sur outils critiques")
-    rep_C2: ReponseType = Field(..., description="Authentification 2FA activée")
-    rep_C3: ReponseType = Field(..., description="Sauvegardes automatisées et testées")
-    rep_C4: ReponseType = Field(..., description="Procédure notification CNIL 72h connue")
+    rep_C1: ReponseType = Field(default="NON", description="Mots de passe forts sur outils critiques")
+    rep_C2: ReponseType = Field(default="NON", description="Authentification 2FA activée")
+    rep_C3: ReponseType = Field(default="NON", description="Sauvegardes automatisées et testées")
+    rep_C4: ReponseType = Field(default="NON", description="Procédure notification CNIL 72h connue")
 
     # Bloc D — Sous-traitants & Transferts (4 questions, max 15 pts)
-    rep_D1: ReponseType = Field(..., description="Prestataires data identifiés")
-    rep_D2: ReponseType = Field(..., description="DPA signés avec chaque prestataire")
-    rep_D3: ReponseType = Field(..., description="Transferts de données hors UE existants")
-    rep_D4: ReponseType = Field(..., description="Garanties de transfert vérifiées (CCT)")
+    rep_D1: ReponseType = Field(default="NON", description="Prestataires data identifiés")
+    rep_D2: ReponseType = Field(default="NON", description="DPA signés avec chaque prestataire")
+    rep_D3: ReponseType = Field(default="NON", description="Transferts de données hors UE existants")
+    rep_D4: ReponseType = Field(default="NON", description="Garanties de transfert vérifiées (CCT)")
 
     # Bloc E — Droits des personnes (2 questions, max 10 pts)
-    rep_E1: ReponseType = Field(..., description="Exercice des droits facilité")
-    rep_E2: ReponseType = Field(..., description="Procédure réponse 30 jours formalisée")
+    rep_E1: ReponseType = Field(default="NON", description="Exercice des droits facilité")
+    rep_E2: ReponseType = Field(default="NON", description="Procédure réponse 30 jours formalisée")
 
     # Bloc F — Email marketing (2 questions, max 10 pts)
-    rep_F1: ReponseType = Field(..., description="Email marketing avec consentement explicite")
-    rep_F2: ReponseType = Field(..., description="Lien désabonnement dans chaque email")
+    rep_F1: ReponseType = Field(default="NON", description="Email marketing avec consentement explicite")
+    rep_F2: ReponseType = Field(default="NON", description="Lien désabonnement dans chaque email")
 
     # Bloc G — EU AI Act (4 questions, max 10 pts)
-    rep_G1: ReponseType = Field(..., description="Usages IA utilisés dans l'activité")
-    rep_G2: ReponseType = Field(..., description="Usages IA listés et risques classifiés")
-    rep_G3: ReponseType = Field(..., description="Clients informés des interactions IA")
-    rep_G4: ReponseType = Field(..., description="Pratiques interdites EU AI Act vérifiées")
+    rep_G1: ReponseType = Field(default="NON", description="Usages IA utilisés dans l'activité")
+    rep_G2: ReponseType = Field(default="NON", description="Usages IA listés et risques classifiés")
+    rep_G3: ReponseType = Field(default="NON", description="Clients informés des interactions IA")
+    rep_G4: ReponseType = Field(default="NON", description="Pratiques interdites EU AI Act vérifiées")
 
 
 # ─────────────────────────────────────────────────────────
@@ -126,24 +127,18 @@ class AIActAnalysis(BaseModel):
 class AuditScores(BaseModel):
     """Sortie de l'Agent Scoring — validation et consolidation des scores."""
 
-    # Scores validés
     score_A: int; score_B: int; score_C: int; score_D: int
     score_E: int; score_F: int; score_G: int
     score_global: int = Field(..., ge=0, le=100)
 
-    # Niveau de conformité
     niveau_conformite: NiveauType
     couleur_niveau: Literal["rouge", "orange", "jaune", "vert"]
 
-    # Top 3 risques prioritaires
     risque_prioritaire_1: str
     risque_prioritaire_2: str
     risque_prioritaire_3: str
 
-    # Blocs critiques (score < 40%)
     blocs_critiques: list[str]
-
-    # Points forts (score > 85%)
     points_forts: list[str]
 
 
@@ -154,10 +149,8 @@ class AuditScores(BaseModel):
 class AuditReport(BaseModel):
     """Sortie de l'Agent Rapport — narration complète et plan d'action."""
 
-    # Résumé exécutif
     resume_executif: str = Field(..., description="Synthèse en 3-4 phrases pour le dirigeant")
 
-    # Plan d'action priorisé
     action_urgente_1: str
     action_urgente_2: str
     action_urgente_3: str
@@ -167,18 +160,9 @@ class AuditReport(BaseModel):
     action_6mois_1: str
     action_6mois_2: str
 
-    # Contexte réglementaire
-    risques_financiers: str = Field(
-        ..., description="Risques CNIL + AI Act chiffrés"
-    )
-
-    # Conclusion personnalisée
+    risques_financiers: str = Field(..., description="Risques CNIL + AI Act chiffrés")
     conclusion: str = Field(..., description="Conclusion avec prochaines étapes")
-
-    # Phrase d'accroche pour l'email de livraison
-    accroche_email: str = Field(
-        ..., description="1 phrase personnalisée pour l'objet de l'email"
-    )
+    accroche_email: str = Field(..., description="1 phrase personnalisée pour l'objet de l'email")
 
 
 # ─────────────────────────────────────────────────────────
@@ -188,18 +172,14 @@ class AuditReport(BaseModel):
 class AuditResult(BaseModel):
     """Résultat complet consolidé de l'audit — tous les agents."""
 
-    # Entrée
     input: AuditInput
-
-    # Sorties agents
     rgpd:    RGPDAnalysis
     aiact:   AIActAnalysis
     scores:  AuditScores
     report:  AuditReport
 
-    # Métadonnées
-    date_audit:     str          # Format DD/MM/YYYY (affichage)
-    date_audit_iso: str = ""     # Format YYYY-MM-DD (Notion date field)
+    date_audit:     str
+    date_audit_iso: str = ""
     pdf_url:        Optional[str] = None
     drive_url:      Optional[str] = None
     notion_page_id: Optional[str] = None
