@@ -1,12 +1,6 @@
 """
 SMD GLOBAL CONSULTING LLC
 Micro-Audits RGPD / EU AI Act pour TPE — API FastAPI
-======================================================
-Endpoints :
-  POST /webhook/tally   ← Reçoit le formulaire Tally (Make.com)
-  POST /audit           ← Déclenche un audit direct (tests / Make.com)
-  GET  /health          ← Health check (Render.com, monitoring)
-  GET  /                ← Bienvenue
 """
 import logging
 import asyncio
@@ -24,7 +18,6 @@ from services.pdf    import generate_pdf
 from services.email  import send_report_email
 from services.notion import save_audit_to_notion, update_audit_notion_page
 
-# ─── Logging ───────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.DEBUG if settings.debug else logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s — %(message)s",
@@ -33,7 +26,6 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
-# ─── App lifecycle ─────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 SMD GLOBAL CONSULTING LLC — Audit RGPD/IA démarré")
@@ -42,7 +34,6 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 Arrêt de l'API")
 
 
-# ─── FastAPI ────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="SMD GLOBAL — Audit RGPD/IA",
     description=(
@@ -55,12 +46,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restreindre en production
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Orchestrateur singleton (initialisé une fois au démarrage)
 orchestrator = AuditOrchestrator()
 
 
@@ -71,66 +61,75 @@ orchestrator = AuditOrchestrator()
 def _parse_tally_payload(payload: dict) -> AuditInput:
     """
     Parse le payload Tally (webhook Make.com).
-    Tally envoie les réponses dans payload["data"]["fields"] avec
-    {"key": "question_id", "value": "OUI"} ou une liste de valeurs.
+    Gère les deux formats :
+      - Payload complet : {"data": {"fields": [...]}}
+      - Objet data seul (Make.com {{1.data}}) : {"fields": [...]}
+    Mappe par label de question (pas par ID auto-généré).
     """
-    fields = {}
-    for field in payload.get("data", {}).get("fields", []):
-        key   = field.get("key", "")
+    label_map: dict[str, str] = {}
+
+    # Détection du format reçu
+    if "fields" in payload:
+        fields_list = payload.get("fields", [])
+    else:
+        fields_list = payload.get("data", {}).get("fields", [])
+
+    for field in fields_list:
+        raw_label = (field.get("label") or field.get("title") or "").strip()
         value = field.get("value", "")
-        # Normaliser les valeurs multiples en string
         if isinstance(value, list):
             value = value[0] if value else ""
-        fields[key] = str(value).strip().upper()
+        if isinstance(value, (int, float)):
+            value = str(int(value))
+        label_map[raw_label.lower()] = str(value).strip()
 
-    # Mapping Tally field ID → AuditInput fields
-    # (À adapter selon les IDs réels du formulaire Tally)
+    def find_oui_non(prefix: str) -> str:
+        p = prefix.lower()
+        for label, val in label_map.items():
+            if label.startswith(p + " ") or label.startswith(p + ":") or label == p:
+                v = val.upper()
+                if v in ("OUI", "NON", "PARTIEL", "NA"):
+                    return v
+                if "OUI" in v:
+                    return "OUI"
+                return "NON"
+        return "NON"
+
+    def find_text(keywords: list, default: str = "") -> str:
+        for kw in keywords:
+            kw_low = kw.lower()
+            for label, val in label_map.items():
+                if kw_low in label and val:
+                    return val
+        return default
+
     return AuditInput(
-        nom_entreprise = fields.get("nom_entreprise", ""),
-        nom_dirigeant  = fields.get("nom_dirigeant", ""),
-        email_client   = fields.get("email_client", ""),
-        secteur        = fields.get("secteur", ""),
-        nb_salaries    = int(fields.get("nb_salaries", "1") or 1),
+        nom_entreprise = find_text(["nom de l'entreprise", "nom entreprise", "entreprise"], ""),
+        nom_dirigeant  = find_text(["dirigeant", "prénom", "responsable", "gérant"], ""),
+        email_client   = find_text(["email", "e-mail", "courriel", "mail"], ""),
+        secteur        = find_text(["secteur", "activité"], ""),
+        nb_salaries    = find_text(["salari", "nombre de salar", "employé"], "1") or "1",
 
-        # Bloc A — Registre des traitements
-        A1=fields.get("A1","NON"), A2=fields.get("A2","NON"), A3=fields.get("A3","NON"),
-
-        # Bloc B — Site web / Cookies
-        B1=fields.get("B1","NON"), B2=fields.get("B2","NON"), B3=fields.get("B3","NON"),
-        B4=fields.get("B4","NON"),
-
-        # Bloc C — Sécurité des données
-        C1=fields.get("C1","NON"), C2=fields.get("C2","NON"), C3=fields.get("C3","NON"),
-        C4=fields.get("C4","NON"),
-
-        # Bloc D — Sous-traitants
-        D1=fields.get("D1","NON"), D2=fields.get("D2","NON"), D3=fields.get("D3","NON"),
-
-        # Bloc E — Droits des personnes
-        E1=fields.get("E1","NON"), E2=fields.get("E2","NON"),
-
-        # Bloc F — Email marketing
-        F1=fields.get("F1","NON"), F2=fields.get("F2","NON"),
-
-        # Bloc G — EU AI Act
-        G1=fields.get("G1","NON"), G2=fields.get("G2","NON"), G3=fields.get("G3","NON"),
-        G4=fields.get("G4","NON"),
+        rep_A1 = find_oui_non("a1"), rep_A2 = find_oui_non("a2"),
+        rep_A3 = find_oui_non("a3"), rep_A4 = find_oui_non("a4"),
+        rep_B1 = find_oui_non("b1"), rep_B2 = find_oui_non("b2"),
+        rep_B3 = find_oui_non("b3"), rep_B4 = find_oui_non("b4"),
+        rep_B5 = find_oui_non("b5"),
+        rep_C1 = find_oui_non("c1"), rep_C2 = find_oui_non("c2"),
+        rep_C3 = find_oui_non("c3"), rep_C4 = find_oui_non("c4"),
+        rep_D1 = find_oui_non("d1"), rep_D2 = find_oui_non("d2"),
+        rep_D3 = find_oui_non("d3"), rep_D4 = find_oui_non("d4"),
+        rep_E1 = find_oui_non("e1"), rep_E2 = find_oui_non("e2"),
+        rep_F1 = find_oui_non("f1"), rep_F2 = find_oui_non("f2"),
+        rep_G1 = find_oui_non("g1"), rep_G2 = find_oui_non("g2"),
+        rep_G3 = find_oui_non("g3"), rep_G4 = find_oui_non("g4"),
     )
 
 
 async def _run_full_pipeline(data: AuditInput) -> AuditResult:
-    """
-    Pipeline complet :
-    1. Audit multi-agents (RGPD + AI Act + Scoring + Rapport)
-    2. Génération PDF via PDF.co
-    3. Sauvegarde Notion
-    4. Envoi email client + notification interne
-    """
-    # Étape 1 — Audit
     result = await orchestrator.run(data)
     logger.info(f"✅ Audit OK — {data.nom_entreprise} | {result.scores.score_global}/100")
 
-    # Étape 2 — PDF
     try:
         pdf_url = await generate_pdf(result)
         result.pdf_url = pdf_url
@@ -139,7 +138,6 @@ async def _run_full_pipeline(data: AuditInput) -> AuditResult:
         logger.error(f"❌ Erreur PDF.co : {e}")
         pdf_url = None
 
-    # Étape 3 — Notion
     try:
         notion_id = await save_audit_to_notion(result)
         if notion_id:
@@ -147,7 +145,6 @@ async def _run_full_pipeline(data: AuditInput) -> AuditResult:
     except Exception as e:
         logger.error(f"❌ Erreur Notion : {e}")
 
-    # Étape 4 — Email
     if pdf_url:
         try:
             await send_report_email(result, pdf_url)
@@ -165,26 +162,20 @@ async def _run_full_pipeline(data: AuditInput) -> AuditResult:
 @app.get("/", tags=["Info"])
 async def root():
     return {
-        "service":  "SMD GLOBAL CONSULTING LLC — Audit RGPD/IA",
-        "version":  "1.0.0",
-        "status":   "running",
+        "service":   "SMD GLOBAL CONSULTING LLC — Audit RGPD/IA",
+        "version":   "1.0.0",
+        "status":    "running",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
 @app.get("/health", tags=["Info"])
 async def health():
-    """Health check pour Render.com et uptime monitors."""
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 @app.post("/webhook/tally", tags=["Webhooks"], status_code=status.HTTP_202_ACCEPTED)
 async def webhook_tally(request: Request, background_tasks: BackgroundTasks):
-    """
-    Webhook Make.com ← Tally.
-    Accepte le payload Tally, parse les réponses du formulaire,
-    déclenche le pipeline en arrière-plan et retourne immédiatement 202.
-    """
     try:
         payload = await request.json()
     except Exception:
@@ -197,8 +188,6 @@ async def webhook_tally(request: Request, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=422, detail=f"Données formulaire invalides : {e}")
 
     logger.info(f"📥 Webhook Tally — {data.nom_entreprise} <{data.email_client}>")
-
-    # Lancer le pipeline en background (réponse immédiate à Tally)
     background_tasks.add_task(_run_full_pipeline, data)
 
     return {
@@ -210,16 +199,8 @@ async def webhook_tally(request: Request, background_tasks: BackgroundTasks):
 
 @app.post("/audit", tags=["Audit"], response_model=dict)
 async def run_audit(data: AuditInput):
-    """
-    Lance un audit complet (endpoint synchrone pour tests et Make.com direct).
-    Retourne le résultat complet JSON après ~20-30 secondes.
-
-    Body JSON : AuditInput (25 questions A1–G4 + 5 champs client)
-    """
     logger.info(f"🔍 Audit direct — {data.nom_entreprise}")
-
     result = await _run_full_pipeline(data)
-
     return {
         "statut":          result.statut,
         "nom_entreprise":  data.nom_entreprise,
@@ -235,18 +216,14 @@ async def run_audit(data: AuditInput):
             result.report.action_urgente_3,
         ],
         "scores": {
-            "A": result.scores.score_A,
-            "B": result.scores.score_B,
-            "C": result.scores.score_C,
-            "D": result.scores.score_D,
-            "E": result.scores.score_E,
-            "F": result.scores.score_F,
+            "A": result.scores.score_A, "B": result.scores.score_B,
+            "C": result.scores.score_C, "D": result.scores.score_D,
+            "E": result.scores.score_E, "F": result.scores.score_F,
             "G": result.scores.score_G,
         },
     }
 
 
-# ─── Démarrage local ───────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
@@ -256,4 +233,3 @@ if __name__ == "__main__":
         reload=settings.debug,
         log_level="debug" if settings.debug else "info",
     )
-
