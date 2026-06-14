@@ -14,59 +14,60 @@ PDFCO_ENDPOINT = "https://api.pdf.co/v1/pdf/convert/from/doc"
 
 
 def _build_macros(data: AuditInput, result: AuditResult) -> list[dict]:
-    """Construit la liste des macros {key, value} pour PDF.co."""
+    """Construit la liste des macros {name, value} pour PDF.co."""
     s = result.scores
     r = result.rgpd
     a = result.aiact
     rp = result.report
 
     return [
-        {"key": "nom_entreprise",           "value": data.nom_entreprise},
-        {"key": "nom_dirigeant",            "value": data.nom_dirigeant},
-        {"key": "date_audit",               "value": result.date_audit},
-        {"key": "secteur",                  "value": data.secteur},
-        {"key": "nb_salaries",              "value": str(data.nb_salaries)},
-        {"key": "ville",                    "value": ""},
-        {"key": "score_global",             "value": str(s.score_global)},
-        {"key": "niveau_conformite",        "value": s.niveau_conformite},
-        {"key": "introduction_personnalisee", "value": rp.resume_executif},
-        {"key": "resume_executif",            "value": rp.resume_executif},
+        {"name": "nom_entreprise",           "value": data.nom_entreprise},
+        {"name": "nom_dirigeant",            "value": data.nom_dirigeant},
+        {"name": "date_audit",               "value": result.date_audit},
+        {"name": "secteur",                  "value": data.secteur},
+        {"name": "nb_salaries",              "value": str(data.nb_salaries)},
+        {"name": "ville",                    "value": ""},
+        {"name": "score_global",             "value": str(s.score_global)},
+        {"name": "niveau_conformite",        "value": s.niveau_conformite},
+        # Introduction / résumé exécutif
+        {"name": "introduction_personnalisee", "value": rp.resume_executif},
+        {"name": "resume_executif",            "value": rp.resume_executif},
         # Scores par bloc
-        {"key": "score_A",  "value": str(s.score_A)},
-        {"key": "score_B",  "value": str(s.score_B)},
-        {"key": "score_C",  "value": str(s.score_C)},
-        {"key": "score_D",  "value": str(s.score_D)},
-        {"key": "score_E",  "value": str(s.score_E)},
-        {"key": "score_F",  "value": str(s.score_F)},
-        {"key": "score_G",  "value": str(s.score_G)},
+        {"name": "score_A",  "value": str(s.score_A)},
+        {"name": "score_B",  "value": str(s.score_B)},
+        {"name": "score_C",  "value": str(s.score_C)},
+        {"name": "score_D",  "value": str(s.score_D)},
+        {"name": "score_E",  "value": str(s.score_E)},
+        {"name": "score_F",  "value": str(s.score_F)},
+        {"name": "score_G",  "value": str(s.score_G)},
         # Statuts par bloc
-        {"key": "statut_A", "value": r.statut_A},
-        {"key": "statut_B", "value": r.statut_B},
-        {"key": "statut_C", "value": r.statut_C},
-        {"key": "statut_D", "value": r.statut_D},
-        {"key": "statut_E", "value": r.statut_E},
-        {"key": "statut_F", "value": r.statut_F},
-        {"key": "statut_G", "value": a.statut_G},
+        {"name": "statut_A", "value": r.statut_A},
+        {"name": "statut_B", "value": r.statut_B},
+        {"name": "statut_C", "value": r.statut_C},
+        {"name": "statut_D", "value": r.statut_D},
+        {"name": "statut_E", "value": r.statut_E},
+        {"name": "statut_F", "value": r.statut_F},
+        {"name": "statut_G", "value": a.statut_G},
         # Analyses par bloc
-        {"key": "analyse_bloc_A", "value": r.analyse_bloc_A},
-        {"key": "analyse_bloc_B", "value": r.analyse_bloc_B},
-        {"key": "analyse_bloc_C", "value": r.analyse_bloc_C},
-        {"key": "analyse_bloc_D", "value": r.analyse_bloc_D},
-        {"key": "analyse_bloc_E", "value": r.analyse_bloc_E},
-        {"key": "analyse_bloc_F", "value": r.analyse_bloc_F},
-        {"key": "analyse_bloc_G", "value": a.analyse_bloc_G},
+        {"name": "analyse_bloc_A", "value": r.analyse_bloc_A},
+        {"name": "analyse_bloc_B", "value": r.analyse_bloc_B},
+        {"name": "analyse_bloc_C", "value": r.analyse_bloc_C},
+        {"name": "analyse_bloc_D", "value": r.analyse_bloc_D},
+        {"name": "analyse_bloc_E", "value": r.analyse_bloc_E},
+        {"name": "analyse_bloc_F", "value": r.analyse_bloc_F},
+        {"name": "analyse_bloc_G", "value": a.analyse_bloc_G},
         # Plan d'action
-        {"key": "action_urgente_1", "value": rp.action_urgente_1},
-        {"key": "action_urgente_2", "value": rp.action_urgente_2},
-        {"key": "action_urgente_3", "value": rp.action_urgente_3},
-        {"key": "action_3mois_1",   "value": rp.action_3mois_1},
-        {"key": "action_3mois_2",   "value": rp.action_3mois_2},
-        {"key": "action_3mois_3",   "value": rp.action_3mois_3},
-        {"key": "action_6mois_1",   "value": rp.action_6mois_1},
-        {"key": "action_6mois_2",   "value": rp.action_6mois_2},
+        {"name": "action_urgente_1", "value": rp.action_urgente_1},
+        {"name": "action_urgente_2", "value": rp.action_urgente_2},
+        {"name": "action_urgente_3", "value": rp.action_urgente_3},
+        {"name": "action_3mois_1",   "value": rp.action_3mois_1},
+        {"name": "action_3mois_2",   "value": rp.action_3mois_2},
+        {"name": "action_3mois_3",   "value": rp.action_3mois_3},
+        {"name": "action_6mois_1",   "value": rp.action_6mois_1},
+        {"name": "action_6mois_2",   "value": rp.action_6mois_2},
         # Synthèse
-        {"key": "risques_financiers", "value": rp.risques_financiers},
-        {"key": "conclusion",         "value": rp.conclusion},
+        {"name": "risques_financiers", "value": rp.risques_financiers},
+        {"name": "conclusion",         "value": rp.conclusion},
     ]
 
 
