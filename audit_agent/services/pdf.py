@@ -29,10 +29,8 @@ def _build_macros(data: AuditInput, result: AuditResult) -> list[dict]:
         {"name": "ville",                    "value": ""},
         {"name": "score_global",             "value": str(s.score_global)},
         {"name": "niveau_conformite",        "value": s.niveau_conformite},
-        # Introduction / résumé exécutif
         {"name": "introduction_personnalisee", "value": rp.resume_executif},
         {"name": "resume_executif",            "value": rp.resume_executif},
-        # Scores par bloc
         {"name": "score_A",  "value": str(s.score_A)},
         {"name": "score_B",  "value": str(s.score_B)},
         {"name": "score_C",  "value": str(s.score_C)},
@@ -40,7 +38,6 @@ def _build_macros(data: AuditInput, result: AuditResult) -> list[dict]:
         {"name": "score_E",  "value": str(s.score_E)},
         {"name": "score_F",  "value": str(s.score_F)},
         {"name": "score_G",  "value": str(s.score_G)},
-        # Statuts par bloc
         {"name": "statut_A", "value": r.statut_A},
         {"name": "statut_B", "value": r.statut_B},
         {"name": "statut_C", "value": r.statut_C},
@@ -48,7 +45,6 @@ def _build_macros(data: AuditInput, result: AuditResult) -> list[dict]:
         {"name": "statut_E", "value": r.statut_E},
         {"name": "statut_F", "value": r.statut_F},
         {"name": "statut_G", "value": a.statut_G},
-        # Analyses par bloc
         {"name": "analyse_bloc_A", "value": r.analyse_bloc_A},
         {"name": "analyse_bloc_B", "value": r.analyse_bloc_B},
         {"name": "analyse_bloc_C", "value": r.analyse_bloc_C},
@@ -56,7 +52,6 @@ def _build_macros(data: AuditInput, result: AuditResult) -> list[dict]:
         {"name": "analyse_bloc_E", "value": r.analyse_bloc_E},
         {"name": "analyse_bloc_F", "value": r.analyse_bloc_F},
         {"name": "analyse_bloc_G", "value": a.analyse_bloc_G},
-        # Plan d'action
         {"name": "action_urgente_1", "value": rp.action_urgente_1},
         {"name": "action_urgente_2", "value": rp.action_urgente_2},
         {"name": "action_urgente_3", "value": rp.action_urgente_3},
@@ -65,7 +60,6 @@ def _build_macros(data: AuditInput, result: AuditResult) -> list[dict]:
         {"name": "action_3mois_3",   "value": rp.action_3mois_3},
         {"name": "action_6mois_1",   "value": rp.action_6mois_1},
         {"name": "action_6mois_2",   "value": rp.action_6mois_2},
-        # Synthèse
         {"name": "risques_financiers", "value": rp.risques_financiers},
         {"name": "conclusion",         "value": rp.conclusion},
     ]
@@ -90,6 +84,8 @@ async def generate_pdf(result: AuditResult) -> str:
     }
 
     logger.info(f"📄 Génération PDF — {filename}")
+    logger.info(f"  🔗 Template URL : {settings.google_drive_template_url}")
+
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(
             PDFCO_ENDPOINT,
@@ -99,10 +95,15 @@ async def generate_pdf(result: AuditResult) -> str:
                 "Content-Type": "application/json",
             },
         )
+
+    # Logger la réponse complète AVANT de lever l'exception
+    if response.status_code != 200:
+        logger.error(f"  ❌ PDF.co status {response.status_code} — Réponse : {response.text[:1000]}")
         response.raise_for_status()
 
     resp_json = response.json()
     if resp_json.get("error"):
+        logger.error(f"  ❌ PDF.co error body : {resp_json}")
         raise ValueError(f"PDF.co error: {resp_json.get('message', 'Unknown error')}")
 
     pdf_url = resp_json["url"]
