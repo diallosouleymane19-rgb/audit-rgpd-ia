@@ -2,8 +2,8 @@
 Modèles de données — Micro-Audit RGPD / IA Act
 SMD GLOBAL CONSULTING LLC
 """
-from pydantic import BaseModel, EmailStr, Field
-from typing import Literal, Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import Literal, Optional, Any
 from enum import Enum
 
 
@@ -23,12 +23,20 @@ StatutType  = Literal["✅", "🟡", "🟠", "🔴"]
 class AuditInput(BaseModel):
     """Données brutes reçues depuis le webhook Tally."""
 
-    # Informations client
+    # Informations client (toutes optionnelles pour robustesse webhook)
     nom_entreprise:  str = Field(default="", description="Nom de l'entreprise auditée")
     secteur:         str = Field(default="", description="Secteur d'activité")
     nb_salaries:     str = Field(default="1", description="Nombre de salariés")
     nom_dirigeant:   str = Field(default="", description="Nom et prénom du dirigeant")
     email_client:    str = Field(default="", description="Email de livraison du rapport")
+
+    # Coerce nb_salaries : accepte int, float, str
+    @field_validator("nb_salaries", mode="before")
+    @classmethod
+    def coerce_nb_salaries(cls, v: Any) -> str:
+        if v is None:
+            return "1"
+        return str(v)
 
     # Bloc A — Registre des traitements (4 questions, max 15 pts)
     rep_A1: ReponseType = Field(default="NON", description="Registre des traitements existe")
