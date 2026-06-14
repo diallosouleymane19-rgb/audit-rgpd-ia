@@ -1,7 +1,6 @@
 """
 Service PDF — Génération du rapport PDF via PDF.co.
-Injecte les variables du rapport dans le template Word,
-convertit en PDF et retourne l'URL de téléchargement.
+Upload le template sur PDF.co puis convertit en PDF avec injection des variables.
 """
 import httpx
 import logging
@@ -10,27 +9,70 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-PDFCO_ENDPOINT = "https://api.pdf.co/v1/pdf/convert/from/doc"
+PDFCO_BASE = "https://api.pdf.co/v1"
+PDFCO_ENDPOINT = f"{PDFCO_BASE}/pdf/convert/from/doc"
+
+
+async def _upload_template_to_pdfco() -> str:
+    """
+    Télécharge le template .docx depuis GitHub et l'uploade sur PDF.co.
+    Retourne l'URL hébergée sur PDF.co (valide 1h).
+    """
+    async with httpx.AsyncClient(timeout=60) as client:
+        # Étape 1 : obtenir une URL présignée PDF.co
+        resp = await client.get(
+            f"{PDFCO_BASE}/file/upload/get-presigned-url",
+            params={
+                "name": "template_audit.docx",
+                "contenttype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            },
+            headers={"x-api-key": settings.pdfco_api_key}
+        )
+        resp.raise_for_status()
+        presigned_data = resp.json()
+        if presigned_data.get("error"):
+            raise ValueError(f"PDF.co presign error: {presigned_data.get('message')}")
+        upload_url = presigned_data["presignedUrl"]
+        file_url   = presigned_data["url"]
+        logger.info(f"  📤 URL présignée obtenue : {file_url}")
+
+        # Étape 2 : télécharger le template depuis GitHub
+        template_resp = await client.get(settings.google_drive_template_url)
+        template_resp.raise_for_status()
+        logger.info(f"  📥 Template téléchargé ({len(template_resp.content)} octets)")
+
+        # Étape 3 : uploader vers PDF.co
+        put_resp = await client.put(
+            upload_url,
+            content=template_resp.content,
+            headers={
+                "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
+        )
+        put_resp.raise_for_status()
+        logger.info(f"  ✅ Template uploadé sur PDF.co")
+
+    return file_url
 
 
 def _build_macros(data: AuditInput, result: AuditResult) -> list[dict]:
     """Construit la liste des macros {name, value} pour PDF.co."""
-    s = result.scores
-    r = result.rgpd
-    a = result.aiact
+    s  = result.scores
+    r  = result.rgpd
+    a  = result.aiact
     rp = result.report
 
     return [
-        {"name": "nom_entreprise",           "value": data.nom_entreprise},
-        {"name": "nom_dirigeant",            "value": data.nom_dirigeant},
-        {"name": "date_audit",               "value": result.date_audit},
-        {"name": "secteur",                  "value": data.secteur},
-        {"name": "nb_salaries",              "value": str(data.nb_salaries)},
-        {"name": "ville",                    "value": ""},
-        {"name": "score_global",             "value": str(s.score_global)},
-        {"name": "niveau_conformite",        "value": s.niveau_conformite},
-        {"name": "introduction_personnalisee", "value": rp.resume_executif},
-        {"name": "resume_executif",            "value": rp.resume_executif},
+        {"name": "nom_entreprise",            "value": data.nom_entreprise},
+        {"name": "nom_dirigeant",             "value": data.nom_dirigeant},
+        {"name": "date_audit",                "value": result.date_audit},
+        {"name": "secteur",                   "value": data.secteur},
+        {"name": "nb_salaries",               "value": str(data.nb_salaries)},
+        {"name": "ville",                     "value": ""},
+        {"name": "score_global",              "value": str(s.score_global)},
+        {"name": "niveau_conformite",         "value": s.niveau_conformite},
+        {"name": "introduction_personnalisee","value": rp.resume_executif},
+        {"name": "resume_executif",           "value": rp.resume_executif},
         {"name": "score_A",  "value": str(s.score_A)},
         {"name": "score_B",  "value": str(s.score_B)},
         {"name": "score_C",  "value": str(s.score_C)},
@@ -60,15 +102,16 @@ def _build_macros(data: AuditInput, result: AuditResult) -> list[dict]:
         {"name": "action_3mois_3",   "value": rp.action_3mois_3},
         {"name": "action_6mois_1",   "value": rp.action_6mois_1},
         {"name": "action_6mois_2",   "value": rp.action_6mois_2},
-        {"name": "risques_financiers", "value": rp.risques_financiers},
-        {"name": "conclusion",         "value": rp.conclusion},
+        {"name": "risques_financiers","value": rp.risques_financiers},
+        {"name": "conclusion",        "value": rp.conclusion},
     ]
 
 
 async def generate_pdf(result: AuditResult) -> str:
     """
-    Génère le PDF via PDF.co et retourne l'URL de téléchargement.
-    Raises: httpx.HTTPError si l'API échoue.
+    1. Upload le template sur PDF.co
+    2. Génère le PDF avec injection des variables
+    3. Retourne l'URL de téléchargement
     """
     data = result.input
     filename = (
@@ -76,15 +119,17 @@ async def generate_pdf(result: AuditResult) -> str:
         f"_{result.date_audit.replace('/', '')}.pdf"
     )
 
+    logger.info(f"📄 Génération PDF — {filename}")
+
+    # Upload le template sur PDF.co
+    template_url = await _upload_template_to_pdfco()
+
     payload = {
-        "url":    settings.google_drive_template_url,
+        "url":    template_url,
         "name":   filename,
         "async":  False,
         "macros": _build_macros(data, result),
     }
-
-    logger.info(f"📄 Génération PDF — {filename}")
-    logger.info(f"  🔗 Template URL : {settings.google_drive_template_url}")
 
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(
@@ -96,14 +141,13 @@ async def generate_pdf(result: AuditResult) -> str:
             },
         )
 
-    # Logger la réponse complète AVANT de lever l'exception
     if response.status_code != 200:
-        logger.error(f"  ❌ PDF.co status {response.status_code} — Réponse : {response.text[:1000]}")
+        logger.error(f"  ❌ PDF.co {response.status_code} — {response.text[:500]}")
         response.raise_for_status()
 
     resp_json = response.json()
     if resp_json.get("error"):
-        logger.error(f"  ❌ PDF.co error body : {resp_json}")
+        logger.error(f"  ❌ PDF.co error : {resp_json}")
         raise ValueError(f"PDF.co error: {resp_json.get('message', 'Unknown error')}")
 
     pdf_url = resp_json["url"]
