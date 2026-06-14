@@ -46,7 +46,7 @@ def _build_properties(result: AuditResult) -> dict:
             "rich_text": _rich_text(result.input.secteur)
         },
         "Salariés": {
-            "number": result.input.nb_salaries
+            "number": int(result.input.nb_salaries or 1)
         },
         # Résultats audit
         "Score global": {
