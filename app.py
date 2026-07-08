@@ -55,6 +55,10 @@ MAKE_SCENARIOS = [
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_MODEL   = "claude-sonnet-4-5"
 
+# ID du formulaire Tally (extrait de https://tally.so/r/rjpjW2)
+TALLY_FORM_ID     = "rjpjW2"
+TALLY_API_BASE    = "https://api.tally.so"
+
 # ─────────────────────────────────────────────────────────────
 # HELPERS SECRETS
 # ─────────────────────────────────────────────────────────────
@@ -68,6 +72,12 @@ def get_notion_token():
 def get_make_key():
     try:
         return st.secrets["make"]["api_key"]
+    except Exception:
+        return None
+
+def get_tally_key():
+    try:
+        return st.secrets["tally"]["api_key"]
     except Exception:
         return None
 
@@ -86,6 +96,109 @@ def notion_headers():
         "Notion-Version": NOTION_API_VER,
         "Content-Type": "application/json",
     }
+
+# ─────────────────────────────────────────────────────────────
+# TALLY — Chargement soumissions
+# ─────────────────────────────────────────────────────────────
+
+# Mapping : prefixe du label dans Tally → code question Streamlit
+# Les labels Tally doivent commencer par "A1 —", "B2 —", etc.
+TALLY_LABEL_TO_CODE = {
+    "A1": "A1", "A2": "A2", "A3": "A3",
+    "B1": "B1", "B2": "B2", "B3": "B3", "B4": "B4",
+    "C1": "C1", "C2": "C2", "C3": "C3", "C4": "C4",
+    "D1": "D1", "D2": "D2", "D3": "D3",
+    "E1": "E1", "E2": "E2",
+    "F1": "F1", "F2": "F2",
+    "G1": "G1", "G2": "G2", "G3": "G3", "G4": "G4", "G5": "G5", "G6": "G6",
+}
+
+# Labels Tally pour les infos client
+TALLY_CLIENT_FIELDS = {
+    "nom_entreprise":  ["Nom de l'entreprise", "Nom entreprise", "Entreprise"],
+    "dirigeant":       ["Prénom et Nom", "Prenom et Nom", "Dirigeant", "Contact"],
+    "email":           ["Votre adresse email", "Email", "Adresse email"],
+    "secteur":         ["Secteur d'activité", "Secteur activite", "Secteur"],
+    "salaries":        ["Nombre de salariés", "Nb salaries", "Salaries"],
+}
+
+def charger_depuis_tally(api_key: str, limit: int = 20):
+    """
+    Recupere les soumissions Tally et retourne la liste triee par date desc.
+    Chaque element : {submitted_at, client_info, reponses}
+    """
+    url = TALLY_API_BASE + "/forms/" + TALLY_FORM_ID + "/submissions"
+    r = requests.get(
+        url,
+        headers={"Authorization": "Bearer " + api_key},
+        params={"limit": limit},
+        timeout=15,
+    )
+    if r.status_code != 200:
+        return None, "Erreur Tally HTTP " + str(r.status_code) + " : " + r.text[:200]
+
+    data = r.json()
+    submissions_raw = data.get("submissions", data.get("data", []))
+    if not submissions_raw:
+        return [], None
+
+    results = []
+    for sub in submissions_raw:
+        submitted_at = sub.get("submittedAt", sub.get("createdAt", ""))[:16].replace("T", " ")
+        fields = sub.get("fields", [])
+
+        client_info = {"nom": "", "contact": "", "email": "", "secteur": "", "salaries": ""}
+        reponses    = {}
+
+        for field in fields:
+            label = field.get("label", "")
+            value = field.get("value", "")
+            # Normaliser la valeur (liste → premier element)
+            if isinstance(value, list):
+                value = value[0] if value else ""
+            value = str(value).strip() if value else ""
+
+            # Detecter question audit : label commence par code (ex: "A1 —")
+            matched_code = None
+            for prefix, code in TALLY_LABEL_TO_CODE.items():
+                if label.upper().startswith(prefix):
+                    matched_code = code
+                    break
+
+            if matched_code:
+                # Normaliser OUI/NON (Tally peut retourner "Oui", "oui", "Yes"...)
+                val_upper = value.upper()
+                if val_upper in ("OUI", "YES", "O", "TRUE", "1"):
+                    reponses[matched_code] = "OUI"
+                elif val_upper in ("NON", "NO", "N", "FALSE", "0"):
+                    reponses[matched_code] = "NON"
+                continue
+
+            # Detecter champs client
+            label_low = label.lower().strip()
+            for field_key, variants in TALLY_CLIENT_FIELDS.items():
+                for v in variants:
+                    if v.lower() in label_low or label_low in v.lower():
+                        if field_key == "nom_entreprise":
+                            client_info["nom"] = value
+                        elif field_key == "dirigeant":
+                            client_info["contact"] = value
+                        elif field_key == "email":
+                            client_info["email"] = value
+                        elif field_key == "secteur":
+                            client_info["secteur"] = value
+                        elif field_key == "salaries":
+                            client_info["salaries"] = value
+                        break
+
+        results.append({
+            "submitted_at": submitted_at,
+            "client_info":  client_info,
+            "reponses":     reponses,
+            "nb_reponses":  len(reponses),
+        })
+
+    return results, None
 
 # ─────────────────────────────────────────────────────────────
 # SIDEBAR
@@ -263,7 +376,54 @@ elif page == "🔬 Rapport IA":
     st.caption("Saisir les reponses Tally → Claude analyse → rapport structure pret a envoyer au client")
 
     TALLY_URL = "https://tally.so/r/rjpjW2"
-    st.info("Lien questionnaire client : " + TALLY_URL)
+
+    # ── Chargement depuis Tally ───────────────────────────────
+    tally_key = get_tally_key()
+    col_tally1, col_tally2 = st.columns([3, 1])
+    with col_tally1:
+        st.info("Lien questionnaire client (a envoyer) : " + TALLY_URL)
+    with col_tally2:
+        if not tally_key:
+            st.warning("Cle Tally manquante")
+        else:
+            if st.button("Charger depuis Tally", type="primary", use_container_width=True):
+                with st.spinner("Recuperation des soumissions Tally..."):
+                    subs, err = charger_depuis_tally(tally_key)
+                if err:
+                    st.error(err)
+                elif not subs:
+                    st.warning("Aucune soumission trouvee dans Tally.")
+                else:
+                    st.session_state["tally_submissions"] = subs
+                    st.success(str(len(subs)) + " soumission(s) trouvee(s)")
+                    st.rerun()
+
+    # Selecteur de soumission si disponible
+    if "tally_submissions" in st.session_state:
+        subs = st.session_state["tally_submissions"]
+        options = [
+            s["submitted_at"] + " — " + (s["client_info"].get("nom") or "Anonyme")
+            + " (" + str(s["nb_reponses"]) + " rep.)"
+            for s in subs
+        ]
+        idx = st.selectbox("Choisir la soumission a charger", range(len(options)),
+                           format_func=lambda i: options[i])
+        if st.button("Charger cette soumission", use_container_width=True):
+            sub = subs[idx]
+            ci = sub["client_info"]
+            st.session_state["tally_loaded"] = sub
+            # Pre-remplir infos client
+            st.session_state["_prefill_nom"]      = ci.get("nom", "")
+            st.session_state["_prefill_contact"]  = ci.get("contact", "")
+            st.session_state["_prefill_email"]    = ci.get("email", "")
+            st.session_state["_prefill_secteur"]  = ci.get("secteur", "")
+            st.session_state["_prefill_salaries"] = ci.get("salaries", "")
+            # Pre-remplir reponses
+            for code, val in sub["reponses"].items():
+                st.session_state["rep_" + code] = val
+            st.success("Soumission chargee — verifiez les reponses ci-dessous")
+            st.rerun()
+        st.divider()
 
     QUESTIONS = {
         "Bloc A — Registre des traitements": [
@@ -308,16 +468,21 @@ elif page == "🔬 Rapport IA":
 
     NB_QUESTIONS = sum(len(v) for v in QUESTIONS.values())
 
-    # 1. Infos client
+    # 1. Infos client (pre-remplies si soumission Tally chargee)
     st.subheader("1  Informations client")
     c1, c2 = st.columns(2)
     with c1:
-        client_nom     = st.text_input("Nom de l'entreprise *", placeholder="Cabinet Dupont")
-        client_contact = st.text_input("Nom du dirigeant",      placeholder="Jean Dupont")
+        client_nom     = st.text_input("Nom de l'entreprise *", placeholder="Cabinet Dupont",
+                                       value=st.session_state.pop("_prefill_nom", ""))
+        client_contact = st.text_input("Nom du dirigeant",      placeholder="Jean Dupont",
+                                       value=st.session_state.pop("_prefill_contact", ""))
     with c2:
-        client_email   = st.text_input("Email client *",        placeholder="jean@dupont.fr")
-        client_secteur = st.text_input("Secteur",               placeholder="Expertise comptable")
-    client_salaries = st.text_input("Nombre de salaries",       placeholder="12")
+        client_email   = st.text_input("Email client *",        placeholder="jean@dupont.fr",
+                                       value=st.session_state.pop("_prefill_email", ""))
+        client_secteur = st.text_input("Secteur",               placeholder="Expertise comptable",
+                                       value=st.session_state.pop("_prefill_secteur", ""))
+    client_salaries = st.text_input("Nombre de salaries",       placeholder="12",
+                                    value=st.session_state.pop("_prefill_salaries", ""))
 
     # 2. Reponses
     st.subheader("2  Reponses du questionnaire")
@@ -721,7 +886,7 @@ elif page == "📢 Marketing":
                 else:
                     st.caption("(Contenu vide — verifier la propriete 'Contenu' dans Notion)")
 
-    if st.button("Rafraîchir", use_container_width=True):
+    if st.button("Rafraichir", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -733,22 +898,22 @@ elif page == "⚙️ Systeme":
 
     make_key = get_make_key()
 
-    # Etat des secrets
     st.subheader("Secrets Streamlit")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("Notion token",   "OK" if get_notion_token()   else "MANQUANT")
+        st.metric("Notion token",  "OK" if get_notion_token()   else "MANQUANT")
     with c2:
-        st.metric("Make API key",   "OK" if make_key             else "MANQUANT")
+        st.metric("Make API key",  "OK" if make_key             else "MANQUANT")
     with c3:
-        st.metric("Anthropic key",  "OK" if get_anthropic_key()  else "MANQUANT")
+        st.metric("Anthropic key", "OK" if get_anthropic_key()  else "MANQUANT")
+    with c4:
+        st.metric("Tally key",     "OK" if get_tally_key()      else "MANQUANT")
 
     st.divider()
 
-    # Etat scenaris Make
     st.subheader("Scenaris Make")
     if not make_key:
-        st.warning("Make API key manquante — impossible de verifier l'etat des scenaris.")
+        st.warning("Make API key manquante.")
         st.code('[make]\napi_key = "VOTRE_MAKE_API_KEY"', language="toml")
     else:
         MAKE_TEAM_ID = "1889560"
@@ -767,24 +932,24 @@ elif page == "⚙️ Systeme":
                     if r.status_code == 200:
                         data = r.json().get("scenario", {})
                         results.append({
-                            "Scenario":   sc["emoji"] + " " + sc["nom"],
-                            "Statut":     "ACTIF" if data.get("isEnabled") else "INACTIF",
+                            "Scenario":      sc["emoji"] + " " + sc["nom"],
+                            "Statut":        "ACTIF" if data.get("isEnabled") else "INACTIF",
                             "Derniere exec": data.get("lastExecution", {}).get("started", "—")[:19].replace("T", " ") if data.get("lastExecution") else "—",
-                            "ID":         sc["id"],
+                            "ID":            sc["id"],
                         })
                     else:
                         results.append({
-                                     "Scenario":   sc["emoji"] + " " + sc["nom"],
-                            "Statut":     "ERREUR HTTP " + str(r.status_code),
+                            "Scenario":      sc["emoji"] + " " + sc["nom"],
+                            "Statut":        "ERREUR HTTP " + str(r.status_code),
                             "Derniere exec": "—",
-                            "ID":         sc["id"],
+                            "ID":            sc["id"],
                         })
                 except Exception as e:
                     results.append({
-                        "Scenario":   sc["emoji"] + " " + sc["nom"],
-                        "Statut":     "ERREUR: " + str(e)[:50],
+                        "Scenario":      sc["emoji"] + " " + sc["nom"],
+                        "Statut":        "ERREUR: " + str(e)[:50],
                         "Derniere exec": "—",
-                        "ID":         sc["id"],
+                        "ID":            sc["id"],
                     })
             return results
 
@@ -799,7 +964,6 @@ elif page == "⚙️ Systeme":
 
     st.divider()
 
-    # Architecture
     st.subheader("Architecture")
     st.markdown("""
 | Composant | Detail |
@@ -810,6 +974,7 @@ elif page == "⚙️ Systeme":
 | **Notion Dashboard** | `ad90d1fd-7f41-400b-97bc-3098faa335a5` |
 | **Notion Marketing** | `7abdb6fc-eae3-43de-afd5-71252ab60f0e` |
 | **Webhook Routeur** | `hook.eu1.make.com/5hbyls7ztgpvc76avtx06h3gfpbi4u2o` |
+| **Tally Form** | `tally.so/r/rjpjW2` |
     """)
 
     st.divider()
